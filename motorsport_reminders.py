@@ -92,17 +92,17 @@ def get_events_from_ics(url: str, serie: str) -> list:
         "User-Agent": "Mozilla/5.0 (compatible; MotorsportReminderBot/1.0)"
     }
 
-    for intento in range(2):  # 1 reintento
+    for intento in range(2):
         try:
             r = requests.get(url, headers=headers, timeout=25)
             if r.status_code == 404:
-                print(f"[{datetime.now()}] 404 en {serie} → {url}")
+                print(f"[{datetime.now()}] 404 en {serie}")
                 return []
             r.raise_for_status()
             cal = Calendar.from_ical(r.content)
             break
         except Exception as e:
-            print(f"[{datetime.now()}] Error leyendo {serie} (intento {intento+1}): {e}")
+            print(f"[{datetime.now()}] Error {serie} (intento {intento+1}): {e}")
             if intento == 1:
                 return []
             import time
@@ -112,6 +112,7 @@ def get_events_from_ics(url: str, serie: str) -> list:
 
     events = []
     now = datetime.now(timezone.utc)
+    hoy_madrid = now.astimezone(TZ).date()
 
     for component in cal.walk():
         if component.name != "VEVENT":
@@ -123,15 +124,21 @@ def get_events_from_ics(url: str, serie: str) -> list:
             continue
 
         start = dtstart.dt
+
+        # Evento de día completo (DATE)
         if not isinstance(start, datetime):
-            start = datetime.combine(start, datetime.min.time())
-
-        if start.tzinfo is None:
-            start = pytz.UTC.localize(start)
-        else:
+            # Lo tratamos como 00:00 en hora de España de ese día
+            start = TZ.localize(datetime.combine(start, datetime.min.time()))
             start = start.astimezone(pytz.UTC)
+        else:
+            if start.tzinfo is None:
+                start = pytz.UTC.localize(start)
+            else:
+                start = start.astimezone(pytz.UTC)
 
-        if start < now:
+        # Solo futuros (comparando fechas en Madrid)
+        event_date = start.astimezone(TZ).date()
+        if event_date < hoy_madrid:
             continue
 
         location = str(component.get("LOCATION", ""))
@@ -193,22 +200,28 @@ def main():
     mensajes = []
     dia_encontrado = None
 
-    # Si no hay nada en 2-3 días, vamos ampliando de 1 en 1
     max_dias = 60  # límite de seguridad (2 meses)
     while not mensajes and dias_a_buscar[-1] <= max_dias:
         for event in all_events:
-            delta = event["start"] - now
-            dias = delta.days
+            hoy = now.astimezone(TZ).date()
+            event_date = event["start"].astimezone(TZ).date()
+            dias = (event_date - hoy).days
 
             if dias not in dias_a_buscar:
                 continue
 
-            key = f"{event['serie']}_{event['title']}_{event['start'].date()}"
+            key = f"{event['serie']}_{event['title']}_{event_date}"
             if sent.get(key) == today_str:
                 continue
 
             local_start = event["start"].astimezone(TZ)
-            fecha_str = local_start.strftime("%A %d/%m/%Y %H:%M").capitalize()
+
+            # Si es evento de día completo (00:00), no mostrar hora
+            if local_start.hour == 0 and local_start.minute == 0:
+                fecha_str = local_start.strftime("%A %d/%m/%Y").capitalize()
+            else:
+                fecha_str = local_start.strftime("%A %d/%m/%Y %H:%M").capitalize()
+
             streaming = STREAMING.get(event["serie"], "Consulta web oficial")
 
             msg = (
@@ -232,7 +245,7 @@ def main():
             print(f"[{datetime.now()}] No hay eventos en {dias_a_buscar[:-1]}, probando con {siguiente} días...")
 
     if mensajes:
-        # Añadimos una nota si no es la ventana normal de 2-3 días
+        # Nota si no es la ventana normal de 2-3 días
         nota = ""
         if dia_encontrado not in DIAS_AVISO:
             nota = f"\n\nℹ️ No había eventos en 2-3 días. Mostrando el más cercano (faltan {dia_encontrado} días)."
@@ -245,6 +258,7 @@ def main():
 
     save_sent(sent)
     print(f"[{datetime.now()}] Listo.")
+
 
 if __name__ == "__main__":
     main()
