@@ -1,0 +1,16 @@
+services:
+  motorsport-reminder-bot:
+    build: .
+    container_name: motorsport-reminder-bot
+    restart: unless-stopped
+    environment:
+      - TELEGRAM_TOKEN=PON_AQUI_TU_TOKEN
+      - TELEGRAM_CHAT_ID=PON_AQUI_TU_CHAT_ID
+      - TZ=Europe/Madrid
+    volumes:
+      - ./data:/data          # aquí se guardan sent_today.json y eventos_locales.json
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
