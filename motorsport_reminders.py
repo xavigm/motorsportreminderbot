@@ -173,46 +173,63 @@ def main():
     sent = load_sent()
     today_str = now.astimezone(TZ).strftime("%Y-%m-%d")
 
+    # Primero intentamos la ventana normal (2 y 3 días)
+    dias_a_buscar = list(DIAS_AVISO)  # [2, 3]
     mensajes = []
+    dia_encontrado = None
 
-    for event in all_events:
-        delta = event["start"] - now
-        dias = delta.days
+    # Si no hay nada en 2-3 días, vamos ampliando de 1 en 1
+    max_dias = 60  # límite de seguridad (2 meses)
+    while not mensajes and dias_a_buscar[-1] <= max_dias:
+        for event in all_events:
+            delta = event["start"] - now
+            dias = delta.days
 
-        if dias not in DIAS_AVISO:
-            continue
+            if dias not in dias_a_buscar:
+                continue
 
-        key = f"{event['serie']}_{event['title']}_{event['start'].date()}"
-        if sent.get(key) == today_str:
-            continue
+            key = f"{event['serie']}_{event['title']}_{event['start'].date()}"
+            if sent.get(key) == today_str:
+                continue
 
-        local_start = event["start"].astimezone(TZ)
-        fecha_str = local_start.strftime("%A %d/%m/%Y %H:%M").capitalize()
-        streaming = STREAMING.get(event["serie"], "Consulta web oficial")
+            local_start = event["start"].astimezone(TZ)
+            fecha_str = local_start.strftime("%A %d/%m/%Y %H:%M").capitalize()
+            streaming = STREAMING.get(event["serie"], "Consulta web oficial")
 
-        msg = (
-            f"🏁 <b>{event['serie']}</b>\n"
-            f"<b>{event['title']}</b>\n"
-            f"📅 {fecha_str} (hora España)\n"
-        )
-        if event["location"]:
-            msg += f"📍 {event['location']}\n"
-        msg += f"📺 {streaming}\n"
-        msg += f"⏳ Faltan {dias} días"
+            msg = (
+                f"🏁 <b>{event['serie']}</b>\n"
+                f"<b>{event['title']}</b>\n"
+                f"📅 {fecha_str} (hora España)\n"
+            )
+            if event["location"]:
+                msg += f"📍 {event['location']}\n"
+            msg += f"📺 {streaming}\n"
+            msg += f"⏳ Faltan {dias} días"
 
-        mensajes.append(msg)
-        sent[key] = today_str
+            mensajes.append(msg)
+            sent[key] = today_str
+            dia_encontrado = dias
+
+        # Si no encontramos nada, ampliamos un día más
+        if not mensajes:
+            siguiente = dias_a_buscar[-1] + 1
+            dias_a_buscar.append(siguiente)
+            print(f"[{datetime.now()}] No hay eventos en {dias_a_buscar[:-1]}, probando con {siguiente} días...")
 
     if mensajes:
-        texto_final = "🏎️ <b>Próximos eventos de motorsport</b>\n\n" + "\n\n".join(mensajes)
+        # Añadimos una nota si no es la ventana normal de 2-3 días
+        nota = ""
+        if dia_encontrado not in DIAS_AVISO:
+            nota = f"\n\nℹ️ No había eventos en 2-3 días. Mostrando el más cercano (faltan {dia_encontrado} días)."
+
+        texto_final = "🏎️ <b>Próximos eventos de motorsport</b>\n\n" + "\n\n".join(mensajes) + nota
         send_telegram(texto_final)
-        print(f"[{datetime.now()}] Enviados {len(mensajes)} recordatorios")
+        print(f"[{datetime.now()}] Enviados {len(mensajes)} recordatorios (día más cercano: {dia_encontrado})")
     else:
-        print(f"[{datetime.now()}] No hay eventos en la ventana de aviso")
+        print(f"[{datetime.now()}] No se encontró ningún evento en los próximos {max_dias} días")
 
     save_sent(sent)
     print(f"[{datetime.now()}] Listo.")
-
 
 if __name__ == "__main__":
     main()
