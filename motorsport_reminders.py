@@ -88,12 +88,26 @@ def save_sent(data: dict):
 
 
 def get_events_from_ics(url: str, serie: str) -> list:
-    try:
-        r = requests.get(url, timeout=25)
-        r.raise_for_status()
-        cal = Calendar.from_ical(r.content)
-    except Exception as e:
-        print(f"[{datetime.now()}] Error leyendo {serie}: {e}")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; MotorsportReminderBot/1.0)"
+    }
+
+    for intento in range(2):  # 1 reintento
+        try:
+            r = requests.get(url, headers=headers, timeout=25)
+            if r.status_code == 404:
+                print(f"[{datetime.now()}] 404 en {serie} → {url}")
+                return []
+            r.raise_for_status()
+            cal = Calendar.from_ical(r.content)
+            break
+        except Exception as e:
+            print(f"[{datetime.now()}] Error leyendo {serie} (intento {intento+1}): {e}")
+            if intento == 1:
+                return []
+            import time
+            time.sleep(2)
+    else:
         return []
 
     events = []
@@ -131,6 +145,7 @@ def get_events_from_ics(url: str, serie: str) -> list:
             "description": description,
         })
 
+    print(f"[{datetime.now()}] {serie}: {len(events)} eventos futuros cargados")
     return events
 
 
