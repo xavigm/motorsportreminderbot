@@ -8,7 +8,7 @@ echo "Hora actual: $(date)"
 printenv | grep -E 'TELEGRAM_|TZ=' > /etc/environment
 
 # Crear el crontab correcto (SIN el usuario "root")
-echo "30 9 * * * root . /etc/environment; /usr/local/bin/python /app/motorsport_reminders.py >> /var/log/cron.log 2>&1" > /etc/cron.d/motorsport
+echo "00 9 * * * root . /etc/environment; /usr/local/bin/python /app/motorsport_reminders.py >> /var/log/cron.log 2>&1" > /etc/cron.d/motorsport
 chmod 0644 /etc/cron.d/motorsport
 
 # También lo instalamos en el crontab de root (por compatibilidad)
